@@ -1,6 +1,5 @@
-from collections.abc import Callable
-from utils import generateDiffMatrix, generateChebyNodes, lagrangePolynomial, generateGeneralChebyNodes
-from generalDDE import theoreticalDDE
+from .utils import generateDiffMatrix, generateGeneralChebyNodes
+from .generalDDE import theoreticalDDE
 import numpy as np
 import scipy.sparse as sparse
 

@@ -1,8 +1,8 @@
 import numpy as np
-from generalDDE import generalDDE
-from pseudoDiff import assembleAm, _generateMeshes, _calculateFirstRow
+from .generalDDE import generalDDE
+from .pseudoDiff import assembleAm, _generateMeshes, _calculateFirstRow
 from typing import Callable
-from utils import generateDiffMatrix
+from .utils import generateDiffMatrix
 from mpi4py import MPI
 
 def _stabilityListForParameters(dde, parameters_paired, M, varDelay: bool = True):
@@ -51,14 +51,14 @@ def generateStabilityTable(dde: Callable[..., generalDDE], parameters: tuple, M:
         
     return stability.reshape(tuple([len(par) for par in parameters]))
 
-def mpiStabilityTable(comm: MPI.Intracomm, dde: Callable[..., generalDDE], parameters: tuple, M:int, varDelay: bool = True) -> np.array[np.bool]:
+def mpiStabilityTable(comm: MPI.Intracomm, dde: Callable, parameters: tuple, M:int, varDelay: bool = True) -> np.array:
     """Generate a stability Table for the given DDE and parameters using multicore computation.
     The Table will be returned as a Bool-Matrix. 
     The dimensions are in order of the parameters provided.
 
     Args:
         comm (MPI.Intracomm): the MPI communicator on which the program should be run
-        dde (Callable[..., generalDDE]): a callable that maps a set of parameters on a DDE of type general DDE.
+        dde (Callable): a callable that maps a set of parameters on a DDE of type general DDE.
         parameters (tuple): A tuple of lists or arrays containing the desired values for each parameter
         M (int): the index of the Meshes for the pseudo differentiation method
         varDelay (bool, optional): Determines whether the delays are varying parameters. 
@@ -67,7 +67,7 @@ def mpiStabilityTable(comm: MPI.Intracomm, dde: Callable[..., generalDDE], param
             Defaults to True.
 
     Returns:
-        np.array[np.bool]: The stability table, with the dimensions in order of the parameters in the tuple.
+        np.array: The stability table, with the dimensions in order of the parameters in the tuple.
     """
     
     # get the necessary parameter for the mpi environment

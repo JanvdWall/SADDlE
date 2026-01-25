@@ -1,0 +1,18 @@
+Metadata-Version: 2.4
+Name: SADDlE
+Version: 0.1.0
+Summary: Stability analysis of linear delay differential equation
+Author-email: Jan van der Wall <jan.wall@student.kit.edu>
+License: MIT
+Project-URL: Homepage, https://github.com/JanvdWall/SADDlE
+Requires-Python: >=3.13
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: numpy>=2.0
+Requires-Dist: scipy>=1.16
+Requires-Dist: mpi4py>=4.1.1
+Dynamic: license-file
+
+# SADDLE
+
+Stability Analysis of Delay Differential Equations
