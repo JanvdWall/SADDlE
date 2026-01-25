@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "SADDlE"
+version = "0.1.0"
+description = "Stability analysis of linear delay differential equation"
+authors = [
+    {name = "Jan van der Wall", email = "jan.wall@student.kit.edu"}
+]
+license = {text = "MIT"}
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "numpy >= 2.0",
+    "scipy >= 1.16",
+    "mpi4py >= 4.1.1",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/JanvdWall/SADDlE"
