@@ -1,0 +1,116 @@
+% This file was created with tikzplotlib v0.10.1.post13.
+\begin{tikzpicture}
+
+\definecolor{darkgrey}{RGB}{169,169,169}
+\definecolor{darkgrey176}{RGB}{176,176,176}
+\definecolor{darkorange25512714}{RGB}{255,127,14}
+\definecolor{forestgreen4416044}{RGB}{44,160,44}
+\definecolor{grey}{RGB}{128,128,128}
+\definecolor{lightgrey204}{RGB}{204,204,204}
+\definecolor{steelblue31119180}{RGB}{31,119,180}
+
+\begin{axis}[
+legend cell align={left},
+legend style={
+  fill opacity=0.8,
+  draw opacity=1,
+  text opacity=1,
+  at={(0.97,0.03)},
+  anchor=south east,
+  draw=lightgrey204
+},
+log basis x={10},
+log basis y={10},
+tick align=outside,
+tick pos=left,
+x grid style={darkgrey176},
+xlabel={N},
+xmin=70.7945784384138, xmax=141253.754462276,
+xmode=log,
+xtick style={color=black},
+xtick={1,10,100,1000,10000,100000,1000000,10000000},
+xticklabels={
+  \(\displaystyle {10^{0}}\),
+  \(\displaystyle {10^{1}}\),
+  \(\displaystyle {10^{2}}\),
+  \(\displaystyle {10^{3}}\),
+  \(\displaystyle {10^{4}}\),
+  \(\displaystyle {10^{5}}\),
+  \(\displaystyle {10^{6}}\),
+  \(\displaystyle {10^{7}}\)
+},
+y grid style={darkgrey176},
+ylabel={Time (seconds)},
+ymin=0.00277522129424454, ymax=8.63117269831527,
+ymode=log,
+ytick style={color=black},
+ytick={0.0001,0.001,0.01,0.1,1,10,100},
+yticklabels={
+  \(\displaystyle {10^{-4}}\),
+  \(\displaystyle {10^{-3}}\),
+  \(\displaystyle {10^{-2}}\),
+  \(\displaystyle {10^{-1}}\),
+  \(\displaystyle {10^{0}}\),
+  \(\displaystyle {10^{1}}\),
+  \(\displaystyle {10^{2}}\)
+}
+]
+\addplot [semithick, red, mark=x, mark size=3, mark options={solid}]
+table {%
+100 0.00819656606666589
+562 0.0276740383669676
+3162 0.110113830133438
+17782 0.579906529400129
+100000 3.41024011290016
+};
+\addlegendentry{SADDlE sparse assembly}
+\addplot [semithick, steelblue31119180, mark=x, mark size=3, mark options={solid}]
+table {%
+100 0.06619536466654
+135 0.121266526700007
+184 0.211693237166764
+251 0.377744934366638
+341 0.702511875466735
+464 1.28701680033337
+630 2.3940221503668
+};
+\addlegendentry{SADDlE dense assembly}
+\addplot [semithick, darkorange25512714, mark=*, mark size=3, mark options={solid}]
+table {%
+100 0.0627355666666667
+147 0.127912733333333
+215 0.2741233
+316 0.592389833333333
+464 1.26170476666667
+681 2.70716826666667
+1000 5.98835356666667
+};
+\addlegendentry{MATLAB single-threaded}
+\addplot [semithick, forestgreen4416044, mark=square*, mark size=3, mark options={solid}]
+table {%
+100 0.0222120333333333
+147 0.0435793666666667
+215 0.0917931
+316 0.194448533333333
+464 0.3979529
+681 0.832235066666667
+1000 2.0690514
+};
+\addlegendentry{MATLAB multi-threaded}
+\addplot [semithick, grey, dash pattern=on 1pt off 3pt on 3pt off 3pt]
+table {%
+100 0.004
+1000 0.04
+10000 0.4
+100000 4
+};
+\addlegendentry{O(n)}
+\addplot [semithick, darkgrey, dash pattern=on 1pt off 3pt on 3pt off 3pt]
+table {%
+100 0.05
+1000 5
+};
+\addlegendentry{O(n^2)}
+\end{axis}
+
+\end{tikzpicture}

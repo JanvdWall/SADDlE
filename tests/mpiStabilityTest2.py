@@ -5,20 +5,21 @@ from mpi4py import MPI
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 from matplotlib import colormaps
+import tikzplotlib
 
 if __name__ == "__main__":
     
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
     
-    dde = lambda a,b : generalDDE(2, [np.pi * 2], None, None, np.array([[0,1], [-a, 0]]), [np.array([[b, 0], [0,0]])], None)
-    a = np.arange(-1, 1, 0.01, dtype=np.double)
-    b = np.arange(-1, 3, 0.01, dtype=np.double)
+    dde = lambda a,b : generalDDE(1, [], [1.0], [0.0], np.array([[a]]), [], [lambda theta: np.array([[b]])], None, False)
+    a = np.arange(-20, 20, 0.25, dtype=np.double)
+    b = np.arange(-150, 50, 0.25, dtype=np.double)
     times = []
     if rank==0:
         print("Starting calculation")
 
-    for i in range(5):
+    for i in range(1):
         comm.barrier()
         time = MPI.Wtime()
         if rank==0:
@@ -31,7 +32,7 @@ if __name__ == "__main__":
         print(f"Calculation completed in {np.mean(times)} seconds (± {np.std(times)})")
         
         cmap = colormaps['viridis']
-        plt.imshow(result, cmap=cmap)
+        plt.imshow(result, cmap=cmap, extent=(b[0], b[-1], a[-1], a[0]))
         plt.xlabel("b")
         plt.ylabel("a")
         custom_lines = [Line2D([0], [0], color=cmap(0.), lw=4),

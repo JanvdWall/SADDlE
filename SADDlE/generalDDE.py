@@ -1,9 +1,10 @@
 import numpy as np
+import scipy.sparse as sparse
 
 class generalDDE:
     """_summary_
     """
-    def __init__(self, dimension: int, discreteDelays:list, lowerIntegrationBounds: list, upperIntegrationBounds: list, noDelayMatrix:np.ndarray, delayMatrices:list[np.ndarray], distributedMatrices:list[callable]):
+    def __init__(self, dimension: int, discreteDelays:list, lowerIntegrationBounds: list, upperIntegrationBounds: list, noDelayMatrix:np.ndarray, delayMatrices:list[np.ndarray], distributedMatrices:list[callable], massMatrix: np.ndarray = None, useSparse: bool = False):
         """_summary_
 
         Args:
@@ -19,13 +20,24 @@ class generalDDE:
         Raises:
             Exception: if some lengths or dimensions dont match.
         """
-        
+        self.useSparse = useSparse
+        if massMatrix is None:
+            self.massMatrix = sparse.csr_matrix(sparse.eye(dimension)) if useSparse else np.eye(dimension)
+        else:
+            self.massMatrix = sparse.csr_matrix(massMatrix) if useSparse else massMatrix
+            
+        if useSparse:
+            self.noDelayMatrix = sparse.csr_matrix((dimension, dimension), dtype=np.float64) if noDelayMatrix is None else noDelayMatrix
+
+        else:
+            self.noDelayMatrix = np.zeros((dimension, dimension)) if noDelayMatrix is None else noDelayMatrix
+
+
         # set all fields of the class and set empty arrays if None is provided
         self.discreteDelays = np.array([]) if discreteDelays is None else discreteDelays
-        self.delayMatrices = [] if delayMatrices is None else delayMatrices
         self.upperIntegrationBounds = np.array([]) if upperIntegrationBounds is None else np.array(upperIntegrationBounds)
         self.lowerIntegrationBounds = np.array([]) if lowerIntegrationBounds is None else np.array(lowerIntegrationBounds)
-        self.noDelayMatrix = np.zeros((dimension,dimension)) if noDelayMatrix is None else noDelayMatrix
+        self.delayMatrices = [] if delayMatrices is None else [sparse.csr_matrix(matrix) if useSparse else matrix for matrix in delayMatrices]
         self.distributedMatrices = [] if distributedMatrices is None else distributedMatrices
         self.dimension = dimension
         
@@ -72,7 +84,7 @@ class generalDDE:
         # for the intermediate steps the noDelayMatrix is included in the list of discrete delay matrices.
         # Later it will return to its special role
         for k in range(1, numberDelays + 1):
-            discreteMatr.append(np.zeros(self.noDelayMatrix.shape))
+            discreteMatr.append(sparse.csr_matrix(self.noDelayMatrix.shape) if self.useSparse else np.zeros(self.noDelayMatrix.shape))
             
         for k in range(countDiscrete):
             # add the appropriate discrete matrices together, multiple zero delays or one delay occurring multiple times is handled this way.
@@ -88,11 +100,14 @@ class generalDDE:
         # these must be initialized as callables
         newDistrMatr = []
         for k in range(numberDelays):
-            newDistrMatr.append(lambda theta : np.zeros(self.noDelayMatrix.shape))
+            if self.useSparse:
+                newDistrMatr.append(lambda theta: sparse.csr_matrix(self.noDelayMatrix.shape, dtype=np.float64))
+            else:
+                newDistrMatr.append(lambda theta : np.zeros(self.noDelayMatrix.shape))
             
         hasDistr = False   
         if countDistrebuted > 0:
-            # these operations must only be performed if distributed delay terms are present    
+            # these operations must only be performed if distributed delay terms are present
             hasDistr = True
             # pair the lower and upper integration bounds, if -lower > -higher these indices must later be flipped
             boundaries = np.column_stack((cleanLowerBounds, cleanUpperBounds))
@@ -103,7 +118,7 @@ class generalDDE:
             for k  in range(len(cleanDistMatr)):
                 if idxFlipped[k] == 0:
                     # if the indices have been flipped, we must evaluate the integral multiplied by -1
-                    cleanDistMatr[k] = lambda theta: -cleanDistMatr[k](theta)
+                    cleanDistMatr[k] = lambda theta, oldMatr = cleanDistMatr[k]: -oldMatr(theta)
             for k in range(len(cleanLowerBounds)):
                 # the indices of the delays between two boundaries
                 idx = (np.argwhere(np.logical_and(-boundaries[k][0] <= -taus, -taus <-boundaries[k][1])).T)[0]

@@ -72,29 +72,97 @@ def _calculateFirstRow(Am, dde, meshes, M, dim, delays):
         Am[0:dim, 0:dim] = dde.noDelayMatrix
         for i, mesh in enumerate(meshes):
             Am[0:dim, ((i+1)*M)*dim: ((i+1)*M +1)*dim] = dde.delayMatrices[i]
-
+            
+def _calculateFirstRowSparse(dde, meshes, M, dim, delays):  
+            
+    rows, cols, data = [], [], []
+    if dde.hasDistributed:
+        weights =getClenshawWeights(M) # each delay gets the same number of quadrature points
+        
+        
+        for k, mesh in enumerate(meshes):
+            fac = (delays[k+1] - delays[k])*0.5
+            for m in range(M+1):
+                if k == 0 and m == 0:
+                    matrix = sparse.csr_matrix(dde.noDelayMatrix) + fac * weights[m] * sparse.csr_matrix(dde.distributedMatrices[k](mesh[m]))
+                    matrix_coo = matrix.tocoo()
+                    rows.append(matrix_coo.row)
+                    cols.append(matrix_coo.col)
+                    data.append(matrix_coo.data)
+                elif 1 <= m <= M-1 and 0 <= k <= len(meshes)-1:
+                    matrix = fac * weights[m] * sparse.csr_matrix(dde.distributedMatrices[k](mesh[m]))
+                    matrix_coo = matrix.tocoo()
+                    rows.append(matrix_coo.row)
+                    cols.append(matrix_coo.col + ((k)*M + m)*dim)
+                    data.append(matrix_coo.data)
+                elif m == M and 0 <= k <= len(meshes)-2:
+                    matrix = sparse.csr_matrix(dde.delayMatrices[k]) + fac * weights[m] * sparse.csr_matrix(dde.distributedMatrices[k](mesh[m]))
+                    + (delays[k+2] - delays[k+1])*0.5 * weights[0] * sparse.csr_matrix(dde.distributedMatrices[k+1](mesh[m]))
+                    matrix_coo = matrix.tocoo()
+                    rows.append(matrix_coo.row)
+                    cols.append(matrix_coo.col + ((k)*M + m)*dim)
+                    data.append(matrix_coo.data)
+                elif m == M and k == len(meshes)-1:
+                    matrix = sparse.csr_matrix(dde.delayMatrices[k]) + fac * weights[m] * sparse.csr_matrix(dde.distributedMatrices[k](mesh[m]))
+                    matrix_coo = matrix.tocoo()
+                    rows.append(matrix_coo.row)
+                    cols.append(matrix_coo.col + ((k)*M + m)*dim)
+                    data.append(matrix_coo.data)
+    else:
+        noDelayMatrix_sparse = sparse.coo_matrix(dde.noDelayMatrix)
+        rows.append(noDelayMatrix_sparse.row)
+        cols.append(noDelayMatrix_sparse.col)
+        data.append(noDelayMatrix_sparse.data)
+        
+        for i, mesh in enumerate(meshes):
+            matrix = sparse.csr_matrix(dde.delayMatrices[i])
+            matrix_coo = matrix.tocoo()
+            rows.append(matrix_coo.row)
+            cols.append(matrix_coo.col + ((i+1)*M)*dim)
+            data.append(matrix_coo.data)
+    return rows, cols, data
     
 def assembleAm(dde: theoreticalDDE, M: int, useSparse:bool = False):
     delays, meshes = _generateMeshes(dde, M)
     dim = dde.dimension
     numberDelays = len(delays)
-    Id = np.identity(dim)  
+    size = dim * ((numberDelays - 1) * M + 1)
+    Id = sparse.eye(dim) if useSparse else np.identity(dim)
     if useSparse:
-        # use sparse lil for easy manipulation of singular entries.
-        # the rest of the syntax for sparse matrices is equivalent, therefore the rest of the code stays the same
-        Am = sparse.lil_array((dim*((numberDelays-1) * M +1), dim*((numberDelays-1) * M +1)))       
+        rows, cols, data = [], [], []
+        for i, mesh in enumerate(meshes):
+            diff = generateDiffMatrix(mesh)
+            diff_sparse = sparse.csr_matrix(diff[1:, :])
+            AmK = sparse.kron(diff_sparse, sparse.eye(dim), format='coo')
+            
+            # Calculate offsets for this block
+            row_offset = (M * i + 1) * dim
+            col_offset = (i * M) * dim
+
+            # Append shifted indices
+            rows.append(AmK.row + row_offset)
+            cols.append(AmK.col + col_offset)
+            data.append(AmK.data)
+
+        firstRows, firstCols, firstData = _calculateFirstRowSparse(dde, meshes, M, dim, delays)
+        # Create sparse matrix from accumulated COO data
+        all_rows = np.concatenate(rows + firstRows)
+        all_cols = np.concatenate(cols + firstCols)
+        all_data = np.concatenate(data + firstData)
+        Am = sparse.coo_array((all_data, (all_rows, all_cols)), shape=(size, size))
+
     else:
         Am = np.zeros((dim*((numberDelays-1) * M +1), dim*((numberDelays-1) * M +1)))
     
-    #calculate the bottom of the matrix
-    for i, mesh in enumerate(meshes):
-        # the bottom of the matrix consists of kronecker products of the differentiation matrix with the identity matrix.
-        # where the differentiation matrix associated with each sub mesh must be considered
-        diff = generateDiffMatrix(mesh)
-        AmK = np.kron(diff, Id)
-        Am[(M*i + 1)*dim : (M*i + 1 + M)*dim, (i*M)*dim : (i*M + M + 1)*dim] = AmK[dim:, :]
+        #calculate the bottom of the matrix
+        for i, mesh in enumerate(meshes):
+            # the bottom of the matrix consists of kronecker products of the differentiation matrix with the identity matrix.
+            # where the differentiation matrix associated with each sub mesh must be considered
+            diff = generateDiffMatrix(mesh)
+            AmK = np.kron(diff[1:, :], Id)
+            Am[(M*i + 1)*dim : (M*i + 1 + M)*dim, (i*M)*dim : (i*M + M + 1)*dim] = AmK
         
-    # generate the first block-row. This is a separate function to be used in other functions regarding the stability tables
-    _calculateFirstRow(Am, dde, meshes, M, dim, delays)
+        # generate the first block-row. This is a separate function to be used in other functions regarding the stability tables
+        _calculateFirstRow(Am, dde, meshes, M, dim, delays)
         
     return Am
