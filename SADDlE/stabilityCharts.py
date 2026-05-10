@@ -1,19 +1,24 @@
 import numpy as np
 from .generalDDE import generalDDE
-from .pseudoDiff import assembleAm, _generateMeshes, _calculateFirstRow
+from .pseudoDiff import _calculateFirstRowSparse, assembleAm, _generateMeshes, _calculateFirstRow
 from typing import Callable
 from .utils import generateDiffMatrix
 from mpi4py import MPI
+import scipy.sparse.linalg as spLinalg
+import scipy.sparse as spSparse
 
-def _stabilityListForParameters(dde, parameters_paired, M, varDelay: bool = True):
+def _stabilityListForParameters(dde, parameters_paired, M, varDelay: bool = True, sparse: bool = False):
     stability = np.zeros(len(parameters_paired), dtype=np.bool)
     
     if varDelay:
         # if the delays are varying, we must calculate the whole matrix anew
         for i, pair in enumerate(parameters_paired):
                 conDde = dde(*pair).convertToTheoreticalDDE()
-                Am = assembleAm(conDde, M) 
-                spec = np.linalg.eig(Am).eigenvalues.real
+                Am = assembleAm(conDde, M, useSparse=sparse)
+                if sparse:
+                    spec = spLinalg.eigs(Am, k = Am.shape[0]-2, which='LR', return_eigenvectors=False).real
+                else:
+                    spec = np.linalg.eig(Am).eigenvalues.real
                 stability[i] = all(spec < 0)
     else:
         #if the delays dont vary, only the first block-row must be recalculated, the rest of the matrix is recycled
@@ -22,36 +27,65 @@ def _stabilityListForParameters(dde, parameters_paired, M, varDelay: bool = True
         delays, meshes = _generateMeshes(conDde, M)
         dim = conDde.dimension
         numberDelays = len(delays)
-        Id = np.identity(dim)    
-        Am = np.zeros((dim*((numberDelays-1) * M) + 1, dim*((numberDelays-1) * M) + 1))
-        
+        size = dim * ((numberDelays - 1) * M + 1)
+        Id = spSparse.eye(dim) if sparse else np.identity(dim)
+        Am = None
         #calculate the bottom of the matrix
-        for i, mesh in enumerate(meshes):
-            diff = generateDiffMatrix(mesh)
-            AmK = np.kron(diff, Id)
-            Am[(M*i + 1)*dim : (M*i + 1 + M)*dim, (i*M)*dim : (i*M + M + 1)*dim] = AmK[1:, :]
+        rows, cols, data = [], [], []
+        if sparse:
+            for i, mesh in enumerate(meshes):
+                diff = generateDiffMatrix(mesh)
+                diff_sparse = spSparse.csr_matrix(diff[1:, :])
+                AmK = spSparse.kron(diff_sparse, spSparse.eye(dim), format='coo')
+                
+                # Calculate offsets for this block
+                row_offset = (M * i + 1) * dim
+                col_offset = (i * M) * dim
+
+                # Append shifted indices
+                rows.append(AmK.row + row_offset)
+                cols.append(AmK.col + col_offset)
+                data.append(AmK.data)
+              
+            for i, pair in enumerate(parameters_paired):
+                conDde = dde(*pair).convertToTheoreticalDDE()
+                firstRows, firstCols, firstData = _calculateFirstRowSparse(conDde, meshes, M, dim, delays)
+                all_rows = np.concatenate(rows + firstRows)
+                all_cols = np.concatenate(cols + firstCols)
+                all_data = np.concatenate(data + firstData)
+                Am = spSparse.coo_array((all_data, (all_rows, all_cols)), shape=(size, size))
+                spec = spLinalg.eigs(Am, which='LR', return_eigenvectors=False).real
+                stability[i] = all(spec < 0)
             
-        # calculate the first block-row of the matrix for each pair
-        for i, pair in enumerate(parameters_paired):
-            Am[0:dim, :] = 0
-            conDde = dde(*pair).convertToTheoreticalDDE()    
-            _calculateFirstRow(Am, conDde, meshes, M, dim, delays)
-                           
-            spec = np.linalg.eig(Am).eigenvalues.real
-            stability[i] = all(spec < 0)
+        else:
+            Am = np.zeros((dim*((numberDelays-1) * M) + 1, dim*((numberDelays-1) * M) + 1))
+            for i, mesh in enumerate(meshes):
+                diff = generateDiffMatrix(mesh)
+                AmK = np.kron(diff, Id)
+                Am[(M*i + 1)*dim : (M*i + 1 + M)*dim, (i*M)*dim : (i*M + M + 1)*dim] = AmK[1:, :]
+            
+            # calculate the first block-row of the matrix for each pair
+            for i, pair in enumerate(parameters_paired):
+                Am[0:dim, :] = 0
+                conDde = dde(*pair).convertToTheoreticalDDE()    
+                _calculateFirstRow(Am, conDde, meshes, M, dim, delays)
+                            
+                spec = np.linalg.eig(Am).eigenvalues.real
+                stability[i] = all(spec < 0)
+                
             
     return stability
 
-def generateStabilityTable(dde: Callable[..., generalDDE], parameters: tuple, M:int, varDelay: bool = True):
+def generateStabilityTable(dde: Callable[..., generalDDE], parameters: tuple, M:int, varDelay: bool = True, sparse: bool = False) -> np.array:
     numberOfParameters = len(parameters)
     parMesh = np.meshgrid(*parameters)
     # The transpose is necessary such that the order of dimensions in the final stability table is senseful.
     parameters_paired = np.array(parMesh).T.reshape(-1, numberOfParameters)
-    stability = _stabilityListForParameters(dde, parameters_paired, M ,varDelay)
+    stability = _stabilityListForParameters(dde, parameters_paired, M ,varDelay, sparse)
         
     return stability.reshape(tuple([len(par) for par in parameters]))
 
-def mpiStabilityTable(comm: MPI.Intracomm, dde: Callable, parameters: tuple, M:int, varDelay: bool = True) -> np.array:
+def mpiStabilityTable(comm: MPI.Intracomm, dde: Callable, parameters: tuple, M:int, varDelay: bool = True, sparse: bool = False) -> np.array:
     """Generate a stability Table for the given DDE and parameters using multicore computation.
     The Table will be returned as a Bool-Matrix. 
     The dimensions are in order of the parameters provided.
